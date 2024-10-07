@@ -39,6 +39,17 @@ services:
     networks:
       - app-network
 
+  bdd-test:
+    build: .
+    command: behave
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/testdb
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - app-network
+
 networks:
   app-network:
     driver: bridge

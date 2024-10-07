@@ -31,4 +31,7 @@ docker-compose run --rm test mongo mongodb://mongodb:27017/testdb
 OR
 python3 api_post.py  # To test the POST request
 
+
+# BDD Test:
+docker-compose run --rm bdd-test
 ```
