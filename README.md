@@ -41,7 +41,7 @@ docker-compose run --rm bdd-test
 ```
 
 ### Python Best Practices
-```
+
 
 1. **Type Hints**: Added type hints to function arguments and return values for better code readability and IDE support.
 
@@ -78,7 +78,7 @@ To further improve your project, consider the following:
 7. **Asynchronous Operations**: If performance is a concern, consider using asynchronous libraries like `aiohttp` or `asyncio`.
 
 These improvements make your code more readable, maintainable, and robust. They also make it easier for other developers to understand and contribute to your project.
-```
+
 
 ### Flask Project Structure (Sample)
 ```
