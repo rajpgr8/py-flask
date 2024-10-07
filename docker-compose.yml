@@ -8,7 +8,10 @@ services:
     environment:
       - MONGO_URI=mongodb://mongodb:27017/flaskapi
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
+    networks:
+      - app-network
 
   mongodb:
     image: mongo:4.4
@@ -16,6 +19,29 @@ services:
       - "27017:27017"
     volumes:
       - mongodb_data:/data/db
+    networks:
+      - app-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongo mongodb://localhost:27017/test --quiet
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  test:
+    build: .
+    command: pytest test_app.py -v
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/testdb
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
 
 volumes:
   mongodb_data:

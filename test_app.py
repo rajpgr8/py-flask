@@ -1,46 +1,123 @@
-import requests
+import pytest
+from flask import Flask
+from flask.testing import FlaskClient
+from app import app, mongo
+import json
+from pymongo import MongoClient
+from pymongo.errors import ServerSelectionTimeoutError
+import time
+from bson import ObjectId
 
-BASE_URL = "http://localhost:5000"
+def wait_for_mongodb(uri, max_attempts=5, delay=1):
+    client = MongoClient(uri)
+    attempts = 0
+    while attempts < max_attempts:
+        try:
+            client.admin.command('ismaster')
+            return True
+        except ServerSelectionTimeoutError:
+            attempts += 1
+            time.sleep(delay)
+    return False
 
-def test_root():
-    url = BASE_URL
-    try:
-        response = requests.get(url)
-        print(f"Root Status Code: {response.status_code}")
-        print(f"Root Response Content: {response.text}")
-    except requests.exceptions.RequestException as e:
-        print(f"An error occurred while testing root: {e}")
+@pytest.fixture(scope='session')
+def mongo_client():
+    mongo_uri = 'mongodb://mongodb:27017/testdb'
+    if not wait_for_mongodb(mongo_uri):
+        pytest.fail("MongoDB is not available")
+    return MongoClient(mongo_uri)
 
-def test_add_item():
-    url = f"{BASE_URL}/api/items"
-    data = {
-        "item": "Test Item"
-    }
+@pytest.fixture
+def client(mongo_client):
+    app.config['TESTING'] = True
+    app.config['MONGO_URI'] = 'mongodb://mongodb:27017/testdb'
+    with app.test_client() as client:
+        with app.app_context():
+            mongo_client.drop_database('testdb')
+        yield client
+
+def test_mongodb_connection(mongo_client):
+    assert mongo_client.server_info()['ok'] == 1.0
+
+def test_hello(client):
+    response = client.get('/')
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['message'] == "Welcome to the Flask API with MongoDB!"
+
+def test_add_item(client):
+    response = client.post('/api/items', json={'item': 'Test Item'})
+    assert response.status_code == 201
+    data = json.loads(response.data)
+    assert 'message' in data
+    assert data['message'] == 'Item added successfully'
+    assert 'id' in data
+
+def test_add_item_invalid_data(client):
+    response = client.post('/api/items', json={})
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data['error'] == 'Invalid item'
+
+def test_get_items_empty(client):
+    response = client.get('/api/items')
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert 'items' in data
+    assert len(data['items']) == 0
+
+def test_get_items(client):
+    client.post('/api/items', json={'item': 'Test Item 1'})
+    client.post('/api/items', json={'item': 'Test Item 2'})
     
-    try:
-        response = requests.post(url, json=data)
-        
-        print(f"Add Item Status Code: {response.status_code}")
-        print(f"Add Item Response Content: {response.text}")
-        
-        if 'application/json' in response.headers.get('Content-Type', ''):
-            try:
-                json_response = response.json()
-                print(f"JSON Response: {json_response}")
-            except requests.exceptions.JSONDecodeError:
-                print("Response is not valid JSON")
-        else:
-            print("Response is not JSON")
-        
-        if response.status_code == 201:
-            print("Item added successfully!")
-        else:
-            print(f"Failed to add item. Status code: {response.status_code}")
-    
-    except requests.exceptions.RequestException as e:
-        print(f"An error occurred while adding item: {e}")
+    response = client.get('/api/items')
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert 'items' in data
+    assert len(data['items']) == 2
+    assert data['items'][0]['name'] == 'Test Item 1'
+    assert data['items'][1]['name'] == 'Test Item 2'
 
-if __name__ == "__main__":
-    test_root()
-    print("\n---\n")
-    test_add_item()
+def test_get_item(client):
+    add_response = client.post('/api/items', json={'item': 'Test Item'})
+    item_id = json.loads(add_response.data)['id']
+    
+    response = client.get(f'/api/items/{item_id}')
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['name'] == 'Test Item'
+
+def test_get_item_not_found(client):
+    non_existent_id = str(ObjectId())
+    response = client.get(f'/api/items/{non_existent_id}')
+    assert response.status_code == 404
+    data = json.loads(response.data)
+    assert data['error'] == 'Item not found'
+
+def test_update_item(client):
+    add_response = client.post('/api/items', json={'item': 'Test Item'})
+    item_id = json.loads(add_response.data)['id']
+    
+    response = client.put(f'/api/items/{item_id}', json={'item': 'Updated Test Item'})
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['message'] == 'Item updated successfully'
+    
+    # Verify the item was updated
+    get_response = client.get(f'/api/items/{item_id}')
+    get_data = json.loads(get_response.data)
+    assert get_data['name'] == 'Updated Test Item'
+
+def test_update_item_not_found(client):
+    non_existent_id = str(ObjectId())
+    response = client.put(f'/api/items/{non_existent_id}', json={'item': 'Updated Test Item'})
+    assert response.status_code == 404
+    data = json.loads(response.data)
+    assert data['error'] == 'Item not found'
+
+def test_update_item_invalid_data(client):
+    add_response = client.post('/api/items', json={'item': 'Test Item'})
+    item_id = json.loads(add_response.data)['id']
+    
+    response = client.put(f'/api/items/{item_id}', json={})
+    assert response
