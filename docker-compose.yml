@@ -2,7 +2,9 @@ version: '3.8'
 
 services:
   web:
-    build: .
+    build: 
+      context: .
+      target: production
     ports:
       - "5000:5000"
     environment:
@@ -50,7 +52,9 @@ services:
       - app-network
 
   test:
-    build: .
+    build: 
+      context: .
+      target: development
     command: pytest test_app.py -v
     environment:
       - MONGO_URI=mongodb://mongodb:27017/testdb
@@ -65,7 +69,9 @@ services:
       - app-network
 
   bdd-test:
-    build: .
+    build: 
+      context: .
+      target: development
     command: behave
     environment:
       - MONGO_URI=mongodb://mongodb:27017/testdb
